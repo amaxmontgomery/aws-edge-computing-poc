@@ -1,0 +1,31 @@
+[scanner]
+
+# Name for this scanner in case more Pi Scanners are added
+scanner_id = "pi-scanner-01"
+
+# Linux monitor-mode interface used by TShark 
+monitor_interface = "mon24"
+
+# Time spent listening on each Wi-Fi channel
+dwell_seconds = 1.0
+
+# Time an identifier must go unobserved before a new observation session is counted
+# Does not mean physical device left and returned, only marks a gap in observed activity
+session_gap_seconds = 300
+
+# Wi-Fi channels included in the hopping cycle
+channels = [
+    #2.4GHz
+    1,
+    6,
+    11,
+    #5GHz
+    36,
+    40,
+    44,
+    48,
+    149,
+    153,
+    157,
+    161
+]
