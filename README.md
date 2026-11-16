@@ -4,7 +4,7 @@ A Raspberry Pi and AWS proof-of-concept project for passively observing nearby W
 
 The current prototype uses a Raspberry Pi 4B and an Alfa AWUS036ACM USB Wi-Fi adapter in monitor mode. The adapter hops across selected 2.4 GHz and 5 GHz channels while TShark extracts source MAC addresses, RSSI, frequency, and observation time.
 
-The wireless observation prototype is complete. The project is now in **Milestone 2**, where I am replacing the manual TShark workflow with a Python scanner, structured observation records, SQLite persistence, JSON batching, and automatic service startup.
+The wireless observation prototype is complete. The project is now in **Milestone 2**. The initial Python project structure and observation model are complete, and the next step is connecting the Python collector to live TShark output.
 
 > **Scope:** This is a wireless observation system, not a definitive device-identification system. An observed MAC address does not necessarily identify one unique physical device, especially when MAC randomization is enabled. The project focuses on wireless metadata and does not require packet payload collection.
 
@@ -17,7 +17,7 @@ The project is organized around seven GitHub milestones.
 | Milestone | Status | Main Deliverable |
 | --- | --- | --- |
 | **M1 — Raspberry Pi Hardware & Network Scanning** | Complete | Working passive Wi-Fi observation prototype |
-| **M2 — Python Scanner & Data Collection** | In progress | Python scanner, aggregation, SQLite, JSON batches, and persistent services |
+| **M2 — Python Scanner & Data Collection** | In progress | Python collector, aggregation, SQLite, JSON batches, and persistent services |
 | **M3 — AWS Infrastructure** | Planned | IAM, VPC, S3, DynamoDB, CloudWatch, security, and cost controls |
 | **M4 — AWS Lambda and Data Collection Processing** | Planned | Lambda-based ingestion, historical storage, and metadata updates |
 | **M5 — EC2, Docker, Load Balance** | Planned | Two EC2 instances, two containers per instance, and an Application Load Balancer |
@@ -76,7 +76,7 @@ The physical radio and interface names are specific to the current Raspberry Pi.
 
 ### Current Data Path
 
-The currently implemented data path ends at TShark:
+The currently implemented live data path ends at TShark:
 
 ```text
 Nearby Wi-Fi activity
@@ -96,6 +96,8 @@ TShark
         v
 Timestamp | Source MAC | RSSI | Frequency
 ```
+
+The Python observation model now exists, but it has not yet been connected to the live TShark process.
 
 The current channel list is:
 
@@ -201,9 +203,11 @@ IAM and network security
 
 ## Current Milestone: Python Scanner & Data Collection
 
-Milestone 2 replaces the manual terminal workflow with a persistent local application.
+Milestone 2 replaces the manual terminal workflow with a structured Python collector and persistent local application.
 
-The planned local pipeline is:
+The initial Python project structure and observation schema are complete. The next step is connecting the collector to TShark so live wireless observations can be parsed into the normalized `Observation` model.
+
+The local pipeline is being built as:
 
 ```text
 AWUS036ACM
@@ -215,16 +219,18 @@ Monitor mode and channel hopping
 TShark
     |
     v
-Python scanner
+Python collector
     |
     |-- Parse and validate observations
-    |-- Normalize timestamps and MAC formatting
+    |-- Normalize MAC formatting
+    |-- Normalize timestamps to UTC
+    |-- Preserve reported frequency
     |-- Convert frequency to channel and band
     |-- Aggregate repeated observations
     |-- Track first seen and last seen
-    |-- Count observations and encounters
-    |-- Calculate RSSI statistics
-    |-- Flag locally administered addresses
+    |-- Count observed frames
+    |-- Track observation sessions
+    `-- Calculate RSSI statistics
     |
     v
 SQLite
@@ -237,25 +243,89 @@ SQLite
 Validated JSON batches
 ```
 
+An observation session represents a period of observed activity for a wireless identifier. A new session may be counted after the identifier has gone unobserved for the configured session gap.
+
+This does not imply that the physical device left and later returned. It only identifies a gap in observed activity.
+
 ### Active M2 Work
 
 Milestone 2 is divided into the following GitHub sub-issues:
 
 ```text
-[M2] Create the Python project structure and observation schema
-[M2] Start and parse TShark from Python
-[M2] Implement observation aggregation and deduplication
-[M2] Add SQLite persistence
-[M2] Generate JSON batches and maintain the upload queue
-[M2] Add systemd startup and reboot recovery
-[M2] Add tests and collector documentation
+[✓] [M2] Create the Python project structure and observation schema
+[ ] [M2] Start and parse TShark from Python
+[ ] [M2] Implement observation aggregation and deduplication
+[ ] [M2] Add SQLite persistence
+[ ] [M2] Generate JSON batches and maintain the upload queue
+[ ] [M2] Add systemd startup and reboot recovery
+[ ] [M2] Add tests and collector documentation
 ```
 
-The GitHub Project board tracks the current status of these items.
+The first M2 sub-issue established the initial Raspberry Pi application structure:
 
-### Planned Local Fields
+```text
+raspberry-pi/
+|-- config.example.toml
+`-- collector/
+    |-- __init__.py
+    `-- models.py
+```
 
-The Python scanner is expected to maintain fields such as:
+The observation model has also been manually verified using synthetic data.
+
+Testing confirmed:
+
+```text
+[✓] MAC format validation
+[✓] MAC normalization
+[✓] Scanner ID validation
+[✓] Timezone validation
+[✓] UTC conversion
+[✓] Frequency-to-channel conversion
+[✓] Frequency-to-band conversion
+[✓] Observation object creation
+[✓] Dictionary output
+```
+
+The GitHub Project board tracks the current status of the remaining items.
+
+### Current Observation Schema
+
+Each individual wireless observation currently contains:
+
+```text
+Scanner ID
+Observation Time
+Observed MAC
+RSSI
+Frequency
+Channel
+Wi-Fi Band
+```
+
+For example:
+
+```text
+Scanner ID:       pi-scanner-01
+Observation Time: 2026-11-16T17:52:03Z
+Observed MAC:     aa:bb:cc:dd:ee:ff
+RSSI:             -63 dBm
+Frequency:        5180 MHz
+Channel:          36
+Wi-Fi Band:       5 GHz
+```
+
+MAC addresses are validated and normalized to lowercase so differences in capitalization do not cause the same observed identifier to be treated as separate records.
+
+Observation timestamps are stored internally in UTC so records remain consistent between the Raspberry Pi, local storage, and future AWS services.
+
+The original frequency reported by TShark is retained while the corresponding channel and Wi-Fi band are also calculated for easier interpretation.
+
+### Planned Aggregated State
+
+Later M2 work will build longer-term state from individual observations.
+
+Planned fields include:
 
 ```text
 Scanner ID
@@ -263,19 +333,18 @@ Observed MAC
 First Seen
 Last Seen
 Frame Count
-Encounter Count
+Observation Session Count
 Latest RSSI
 Minimum RSSI
 Maximum RSSI
 Average RSSI
-Frequency
-Channel
-Wi-Fi Band
-Locally Administered Flag
+Latest Frequency
+Latest Channel
+Latest Wi-Fi Band
 Upload Status
 ```
 
-The exact schema will be finalized as part of the first M2 sub-issue.
+The exact aggregation and session behavior will be implemented as part of the M2 aggregation and deduplication sub-issue.
 
 ---
 
@@ -481,16 +550,11 @@ This allows each storage service to have a clear responsibility.
 
 The project does not assume that one observed MAC address always represents one permanent physical device.
 
-Modern devices may use:
-
-- Randomized MAC addresses
-- Private MAC addresses
-- Locally administered addresses
-- Different identifiers on different wireless networks
+Modern devices may use randomized or private MAC addresses, and the identifier used by a device may change between networks or over time.
 
 The first version treats each MAC as an **observed wireless identifier**.
 
-Any relationship between multiple addresses and one logical physical device will remain a separate, explicit inference. A locally administered address may be a useful indicator, but it is not proof that an address is randomized.
+The collector does not attempt to determine the real-world identity of a device or assume that multiple observed MAC addresses belong to the same physical device.
 
 ---
 
@@ -500,10 +564,12 @@ Any relationship between multiple addresses and one logical physical device will
 - A device must transmit while the scanner is listening to the relevant channel.
 - Channel hopping can miss short transmissions.
 - The current channel list does not include DFS channels.
-- Randomized MAC addresses prevent reliable identity based on MAC alone.
+- Randomized MAC addresses prevent reliable physical-device identity based on MAC alone.
 - RSSI represents relative signal strength, not exact physical distance.
+- A gap in observations does not prove that a physical device left the observation area.
 - The current monitor interface and channel hopper are started manually.
-- The Python scanner and SQLite database are still being implemented.
+- The Python observation model exists, but the collector is not yet connected to live TShark output.
+- SQLite persistence has not been implemented yet.
 - The AWS environment has not been deployed yet.
 
 ---
@@ -514,15 +580,22 @@ Any relationship between multiple addresses and one logical physical device will
 aws-edge-computing-poc/
 |-- .gitignore
 |-- README.md
-`-- docs/
-    |-- README.md
-    |-- architecture.md
-    |-- pi-setup.md
-    |-- project-structure.md
-    `-- roadmap.md
+|
+|-- docs/
+|   |-- README.md
+|   |-- architecture.md
+|   |-- pi-setup.md
+|   |-- project-structure.md
+|   `-- roadmap.md
+|
+`-- raspberry-pi/
+    |-- config.example.toml
+    `-- collector/
+        |-- __init__.py
+        `-- models.py
 ```
 
-Application directories will be added only when they contain real implementation files. Empty folders will not be created only to make the repository appear more complete.
+New application directories and files will be added as their related milestones and sub-issues are implemented. Empty directories will not be created only to make the repository appear more complete.
 
 ---
 
