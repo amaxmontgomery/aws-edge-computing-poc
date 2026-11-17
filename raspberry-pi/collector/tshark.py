@@ -15,34 +15,42 @@ def build_tshark_command(monitor_interface: str) -> list[str]:
     """
 
     return [
-      #program tshark start
+        # Program to start.
         "tshark",
-      # -l -> line-buffered output so Python receives observations immediately
+
+        # -l -> line-buffered output so Python receives observations immediately.
         "-l",
-      # -i -> network interface TShark captures from
-      # monitor_interface -> configurable interface, currently mon24
+
+        # -i -> network interface TShark captures from.
         "-i",
         monitor_interface,
-      # -Y -> applies a TShark display filter
-      # wlan.sa -> only use frames containing a WLAN source address
+
+        # -Y -> applies a TShark display filter.
+        # wlan.sa -> only use frames containing a WLAN source address.
         "-Y",
         "wlan.sa",
-      # -T fields -> output only specifically requested packet fields
+
+        # -T fields -> output only the specifically requested packet fields.
         "-T",
         "fields",
-      # -E occurrence=f -> use the first occurrence when a field appears multiple times
+
+        # -E occurrence=f -> use the first value if a field occurs multiple times.
         "-E",
         "occurrence=f",
-      # frame.time_epoch -> observation timestamp as Unix epoch time
+
+        # Observation timestamp as Unix epoch time.
         "-e",
         "frame.time_epoch",
-      # wlan.sa -> source MAC address from the wireless frame
+
+        # Wireless source MAC address.
         "-e",
         "wlan.sa",
-      # radiotap.dbm_antsignal -> received signal strength in dBm
+
+        # Received signal strength in dBm.
         "-e",
         "radiotap.dbm_antsignal",
-      # radiotap.channel.freq -> frequency the frame was observed on, in MHz
+
+        # Frequency the frame was observed on, in MHz.
         "-e",
         "radiotap.channel.freq",
     ]
@@ -81,6 +89,7 @@ def parse_tshark_line(
 
         # RSSI or frequency may occasionally be missing.
         rssi_dbm = int(rssi_text) if rssi_text else None
+
         frequency_mhz = (
             int(frequency_text)
             if frequency_text
@@ -160,11 +169,15 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    for observation in stream_observations(
-        scanner_id=args.scanner_id,
-        monitor_interface=args.interface,
-    ):
-        print(observation)
+    try:
+        for observation in stream_observations(
+            scanner_id=args.scanner_id,
+            monitor_interface=args.interface,
+        ):
+            print(observation)
+
+    except KeyboardInterrupt:
+        print("\nCollector stopped.")
 
 
 if __name__ == "__main__":
